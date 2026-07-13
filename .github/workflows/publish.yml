@@ -1,0 +1,59 @@
+name: WeChat Article Publisher
+
+on:
+  schedule:
+    # 每周一上午 9:00 (UTC+8) 自动运行
+    - cron: '0 1 * * 1'
+  workflow_dispatch:
+    inputs:
+      article_topic:
+        description: '文章主题（可选）'
+        required: false
+        default: ''
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Dependencies
+        run: |
+          npm install axios markdown-it
+
+      - name: Generate Article
+        run: node scripts/generate-article.js
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ARTICLE_TOPIC: ${{ github.event.inputs.article_topic }}
+
+      - name: Format Article for WeChat
+        run: node scripts/format-wechat.js
+
+      - name: Upload Images to WeChat
+        run: node scripts/upload-images.js
+        env:
+          WECHAT_APPID: ${{ secrets.WECHAT_APPID }}
+          WECHAT_SECRET: ${{ secrets.WECHAT_SECRET }}
+
+      - name: Create WeChat Draft
+        run: node scripts/create-draft.js
+        env:
+          WECHAT_APPID: ${{ secrets.WECHAT_APPID }}
+          WECHAT_SECRET: ${{ secrets.WECHAT_SECRET }}
+
+      - name: Commit Generated Article
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add articles/
+          git diff --cached --quiet || git commit -m "Auto-generate WeChat article: $(date +%Y-%m-%d)"
+          git push
